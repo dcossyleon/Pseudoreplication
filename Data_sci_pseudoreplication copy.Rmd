@@ -1,0 +1,522 @@
+---
+title: "Pseudoreplication: How to avoid it in experimental design and analysis"
+author: "Desirée De Leon"
+date: "10/15/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#An extreme example of pseudoreplication
+
+<br></br><div style="text-align: center;"><img src="eyeblink_img.png" /></div><br></br>
+
+Let's say you were doing an experiment that tested whether there were any sex differences between the blink reaction times to an air puff between males and females, and you needed a total sample size of n=10. But instead of getting a single, independent observation from 10 different subjects, you decided to record the same male and female's individual reactions 5 times. <br></br>
+<br></br>
+
+##First let's simulate the data
+```{r}
+#Set the values for each of the parameters we'll use
+
+I= 2 # number of groups (subjects, in this case)
+J= 5 # number of observations (or trials) per group
+diff= 10 # Setting how different the group means should be from each other
+sd.group= 4 # Standard deviation of scores between different subjects
+sd.observation= 1.5 # Standard deviation of scores between trials of the same individual
+
+#Create each variable
+subject.ID = rep( c(1:I), each=J*I)
+trials.ID = rep( sequence(J), times=I)
+sex= rep( c(0,1), each=J)
+
+#Generate the mean for each group
+subject.1= rep( rnorm( n= 0.5*I, mean= 40, sd= sd.group), times= J) #Female mean
+subject.2= rep( rnorm (n= 0.5*I, mean= 40+diff, sd= sd.group), times= J) #Male mean
+
+subject.1 
+subject.2
+```
+```{r}
+#Use the group means we just generated to sample again. This will generate the y values (eyeblink response times).
+y.blink= rnorm(n= J*I, mean= c(subject.1, subject.2), sd= sd.observation)
+y.blink
+
+#Combine into a single dataframe
+blink.data <- as.data.frame( cbind( subject.ID, trials.ID, sex, y.blink), row.names = NULL)
+```
+<br></br>
+
+For consistency, I'm going to use a dataset I already have. But these data were simulated using the code above.  
+
+```{r}
+blink.data <- read.csv(file = "~/Documents/Stats/Pseudoreplication/eyeblink_sim.csv")
+blink.data
+```
+<br></br> 
+We can plot these data.  
+```{r}
+# Plot the data
+plot(y.blink ~ jitter(sex, 0.05), data= blink.data, 
+    xlab= "Sex", ylab= "Reaction time (ms)", 
+    cex= 1.5, cex.lab= 1.5, cex.axis= 1.75, #Text and circle size
+    xlim= c(-0.5,1.5), ylim= c(min(y.blink) -5, max(y.blink) +5),
+    xaxt= "n") #Range of axes  #Removes default x-axis text
+axis(side= 1, at= 0:1, labels= c("Female", "Male")) #Replaces with custom label
+    
+```
+<br></br>
+
+If we ran a linear regression using these data, assuming that each Male and Female data point was independent from each other, we would be committing a very egregious case of pseudoreplication. Any p-value that results from such a linear regression analysis will be unreliable if this analysis were treated as N=10. 
+<br></br>
+Note that according to this model's p-value, we would see a significant effect of sex on y.blink times. But what we really have is a much smaller effective number of independent observations, and if we correctly acknowledge this much smaller sample size, our test statistic and our p-value would be very different. 
+<br></br>
+<br></br>
+
+
+##Determining the effective sample size, N
+<br></br>
+From this example it's obvious to see that we have only two independent subjects, but we can confirm this in a mathematical way by calculating what's called the **intraclass correlation coefficient (ICC)**. The ICC tells how similar or correlated observations from the same group are. To calculate the ICC, we calculate the proportion of total variance that is due to group membership.
+<br></br>
+<br></br>
+
+<div style="text-align: center;"><img src="ICC_img.png" alt="ICC_img" width="400"/> </div>
+<br></br>
+
+###Step 1: Calculate the mean of each group
+```{r Step 1: Calculate the mean of each group}
+mean.1 <- rep(mean(blink.data$y.blink[1:5]), times=J)
+mean.2 <- rep(mean(blink.data$y.blink[6:10]), times=J)
+group.mean <- blink.data$group.mean <- c(mean.1,mean.2) #group mean: means for male subject, mean for female subject
+group.mean
+```
+<br></br>
+
+<div style="text-align: center;"><img src="s1.png"/> </div>
+
+### Step 2: Calculate the deviance from group means
+```{r Step 2: Calculate the deviance from group means}
+within.group.resid <- blink.data$within.group.resid <- (blink.data$y.blink-group.mean) #deviance between each observation value and its group mean
+blink.data
+```
+<br></br>
+
+<div style="text-align: center;"><img src="s2.png"/> </div>
+
+
+###Step 3: Calculate deviance between group means and grand mean
+```{r Step 3: Calculate deviance between group means and grand mean}
+(between.group.resid <- (blink.data$group.mean - mean(blink.data$y.blink)))
+between.group.resid <- between.group.resid[c(1,6)] #The "[c(1,6)]" part subsets just the 1st and 6th terms in the list, so that we only get one difference value for each group mean. 
+```
+```{r}
+#sum of squares
+within.group.sumsquares <- sum(within.group.resid^2)
+within.group.sumsquares
+
+between.group.sumsquares <- sum(between.group.resid^2)
+between.group.sumsquares
+```
+<br></br>
+
+<div style="text-align: center;"><img src="s3.png"/> </div>
+
+###Step 4: Divide by n-1 to convert to variance components
+```{r}
+within.group.var <- within.group.sumsquares / ((J*I)-1) #within group variance, n-1
+within.group.var 
+
+between.group.var <- between.group.sumsquares / (I-1) #Here, the n is the number of groups
+between.group.var
+```
+<br></br>
+
+###Step 5: Plug these values into the ICC equation
+```{r}
+ICC.blink = between.group.var / (between.group.var + within.group.var)
+ICC.blink
+```
+<br></br>
+Compare this answer to results from ICC function (which uses a slightly different method of calculating the ICC but gives a close enough approximation).<br></br>
+
+```{r Compare answer to results from ICC function}
+library(ICC)
+ICCest(x=as.factor(subject.ID), y=y.blink, data=blink.data, alpha=0.05)
+```
+<br></br>
+
+###Step 6: Calculate the Design Effect: 
+Now that we know the ICC, we can figure out what our effective, or corrected, sample size would be. By plugging in our value of the ICC into the design effect equation, we can figure out what factor our initial N should be adjusted by. <br></br>
+
+```{r Calculate the design effect}
+design_effect = 1 + (J-1) * ICC.blink  # The equation is 1 + (n-1) * ICC. Must be calculated per group, so n is per group
+design_effect
+```
+<br></br>
+
+###Step 7: Calculate the Effective Sample Size
+```{r Effective Sample Size}
+N_effective <- (J[1]*I)/design_effect
+N_effective
+```
+<br></br>
+
+***
+<br></br>
+
+#Why is pseudoreplication a problem?
+Next we will see why pseudoreplication is problematic by doing a **simulation**. The point of simulation is to generate data with known parameters (we set the mean, variance, etc.) and to then give it to our statistical model and see how good of a job it does at giving us back the right answer. Let's walk through the framework of a simulation, setting aside pseudoreplication for a moment. <br></br>
+
+We will simulate a scenario where there is no true treatment effect between two groups. To make this example more concrete, let's say that this happens when we mistakenly both our control group and experimental groups saline, instead of giving the experimental group a drug treatment.
+
+<div style="text-align: center;">![](bell_curves.png)</div>
+
+Since there is no treatment effect, to simulate the data for each group, we will sample N=10 twice from the same population. Let's create a function that will independently sample two groups from the same population, run a statistical test between the two groups, and return the p-value. Again, in this first example we are sampling independently, so there is no pseudoreplication going on.
+
+<div style="text-align: center;"><img src="bell_curves_sim1.png" alt="bell_curves_sim1" width="400"/></div><br></br>
+
+##Simulation with independent samples
+###Simulate a single study
+```{r}
+I= 2 #number of groups
+J= 10 #number of observations/group
+sd.observation = 1  # standard deviation of observations
+
+animal.ID= sequence(rep(J, times= I))
+treat.ID= rep(c(0,1), each= J) # i.e. Pink vs. Blue, or alternatively saline vs. the treatment we think we gave
+
+y = rnorm(n= J*I, mean= 0, sd= sd.observation) # This simulates the data (y-values)
+
+#Combines into a dataframe
+data <- as.data.frame( cbind(animal.ID, treat.ID, y))
+data
+
+```
+<br></br>
+
+###Run a statistical test and save the p-value
+We can run a statistical test on these data to see whether the test (erroneously) detects a difference between the two treatment groups (remember that in this example we don't realize we've given both of our treatment groups saline). We check the p-value.
+
+```{r}
+p<- summary(lm( y ~ treat.ID, data= data))$coefficient[8] # Run linear model, but only output the p-value
+p 
+```
+<br></br>
+This p-value is the outcome of a single simulated study. We want to repeat these steps 1000 times, so let's package all of the above steps into a single function to make the process more efficient. 
+<br></br>
+
+#### Place all steps into a single function
+```{r Place into a function}
+sample.independently <- function(x){
+  animal.ID= sequence(rep(J, times= I))
+  treat.ID= rep(c(0,1), each= 0.5*length(animal.ID))
+  y = rnorm(n= J*I, mean= 0, sd= sd.observation)
+  data <- as.data.frame(cbind(animal.ID, treat.ID, y))
+  p<- summary(lm( y ~ treat.ID, data= data))$coefficient[8]
+  return(p)
+}
+```
+
+Everytime we run this function, the final output will be a single p-value from a single simulated study. Since there is no true difference between the two groups we're sampling from, **we should get a *non-significant* p-value** for 95% of our simulations. But this also means that 5% of the time (our alpha=0.05), our simulated studies will produce a "false positive" result by chance alone--- a significant p-value indicating a difference between the two groups even though we know there is not a real difference.<br></br>
+<br></br>
+
+###Repeat 1000 times
+Let's run this function 1000 times, simulating 1000 of these studies. And we will save all 1000 p-values from each study in a new dataframe.
+```{r}
+sim.results<- do.call(rbind, lapply(1:1000, function(x) sample.independently())) #dataframe of 1000 pvalues
+colnames(sim.results) <- "P-value"
+head(sim.results)
+```
+<br></br>
+
+###How many p-values were < 0.05?
+Using all 1000 p-values, we can see how many of them ended up being "significant" with values of less than 0.05. Let's look at this with a histogram:
+
+```{r}
+hist(sim.results, 20, main="1000 P-values in studies with independent sampling", xlab="P-values", ylim=c(0,300))
+```
+<br></br>
+Good! Here we see that the "significant" p-values less than 0.05 (the leftmost histogram bar) only occur about 50 times out of 1000 studies. So that's 5% of the time--- exactly the false positive rate we'd expect. **This shows us that if we *sample independently*, our statistical model will work the way we expect it to.**
+<br></br>
+<br></br>
+<br></br>
+
+##Simulation with pseudoreplicated samples
+<br></br>
+Now let's bring pseudoreplication back into the story. If we do another simulation, but this time have our observations be clustered in some way (i.e. introduce pseudoreplication), while continuing to have no real difference between the means of the two groups, we will get a very different amount of "significant" p-values.
+<br></br>
+
+We will use a similar process as before, but this time we will introduce some non-independence among the observations in the blue and pink groups.
+<br></br>
+
+<div style="text-align: center;"><img src="bell_curves_ind_v_pseudo.png" alt="bell_curves_sim1"/></div><br></br>
+
+###Simulate a single study with pseudoreplication
+```{r Create a function for pseudoreplication}
+
+I=4 # 2 clusters x 2 "treatment" groups
+J=5 # number of observations per cluster
+sd.observation=1 # same as before
+sd.group= 0.7 #This introduces the pseudoreplication (between-group σ)
+sim.diff=0 #We make explicit here that there will be no difference between treatment groups
+
+group.ID= rep( c(1:I), each= J) #4 pseudoreplicated groups
+animal.ID= sequence( rep( J, times= I))
+treat.ID= rep( c(0,1), each= I*J*0.5) #Assumes balanced design
+  
+(mean.0= rep( rnorm( n= 0.5*I, mean= 0, sd= sd.group), each= J)) # sd.group will specify the clustering
+(mean.1= rep( rnorm( n= 0.5*I, mean= sim.diff, sd= sd.group), each= J)) # Note population means are the same
+  
+y=rnorm(n= J*I, mean= c(mean.0, mean.1), sd= sd.observation) #Creates y-values, sampling from means in previous step. See dataframe
+  
+#Combine into dataframe
+data <- as.data.frame(cbind(group.ID, animal.ID, treat.ID, y))
+data
+  
+#Run statistical model, get back only the p-value
+p<- summary(lm(y~treat.ID, data=data))$coefficient[8]
+```
+<br></br>
+
+####Place it all into one function
+```{r}
+pseud <- function(x){
+  group.ID= rep( c(1:I), each= J)
+  animal.ID= sequence( rep( J, times= I))
+  treat.ID= rep( c(0,1), each= I*J*0.5) 
+  mean.0= rep( rnorm( n= 0.5*I, mean= 0, sd= sd.group), times= J) 
+  mean.1= rep( rnorm( n= 0.5*I, mean= sim.diff, sd= sd.group), times= J)
+  y=rnorm(n= J*I, mean= c(mean.0, mean.1), sd= sd.observation)
+  data <- as.data.frame(cbind(group.ID, animal.ID, treat.ID, y), row.names = NULL)
+  p<- summary(lm(y~treat.ID, data=data))$coefficient[8]
+  return(p)
+}
+```
+<br></br>
+
+### Repeat 1000 times. How many p-values were less than 0.05? 
+Now let's see what the histogram of p-values looks like when we run that function 1000 times:
+```{r}
+sim.results<- do.call( rbind, lapply(1:1000, function(x) pseud(J))) #dataframe of 1000 pvalues
+hist( sim.results, 20, main="1000 P-values in studies with Pseudoreplication", xlab="P-values", ylim=c(0,300))
+```
+<br></br>
+We get many more false positive p-values in the scenario where we introduce pseudoreplication. This is bad! We know there is no true population difference between the blue and pink treatment groups, but the pseudoreplication tricks our statistical model into reporting significant differences back to us. Instead of a false-positive rate of 5%, we instead have <strong> a false positive rate of `r proportion <- function(x){
+  pr <- length(x[x<0.05])/1000 #1000--> number of rows
+  return(pr)
+}
+false.positive.rate <- apply(sim.results, MARGIN=2, FUN=proportion) #Take the dataframe of p-values, apply the proportion function across the rows
+false.positive.rate *100`% </strong>.
+<br></br>
+<br></br>
+
+###Calculate the False Positive Rate (Type I Error Rate)
+```{r Calculate the Type I Error rate (False Positive Rate)}
+
+proportion <- function(x){
+  pr <- length(x[x<0.05])/1000 #1000--> number of rows
+  return(pr)
+}
+
+false.positive.rate <- apply(sim.results, MARGIN=2, FUN=proportion) #Take the dataframe of p-values, apply the proportion function across the rows
+false.positive.rate *100
+```
+<br></br>
+If we increase the between-group variance while keeping everything else constant, the false-positive rate will get even worse. For example, when `sd.group` is increased to `sd.group = 0.9`, <strong> the false positive rate becomes
+`r 
+sd.group= 0.9 
+sim.results<- do.call(rbind, lapply(1:1000, function(x) pseud(J))) 
+false.positive.rate <- apply(sim.results, MARGIN=2, FUN=proportion)
+(false.positive.rate*100)`%. </strong> <br></br> 
+```{r, echo=FALSE}
+sd.group= 0.9 #Will result in even higher between-group variance
+#Maintaining a difference of 0 between the group means
+
+sim.results<- do.call(rbind, lapply(1:1000, function(x) pseud(J))) 
+hist(sim.results, 20, main= "sd.group= 0.9", xlab="P-values", ylim=c(0,300))
+```
+<br></br>
+Alternatively, if we change`sd.group` to `= 0`. We eliminate any clustering or similarity between the groups, and we are back in the situation of each sample being independent. Let's illustrate this as well. Our false-positive rate should go back to being right around the expected 5%. 
+<br></br>
+
+
+```{r, echo=FALSE}
+sd.group= 0 # If the between-group variance is 0, then we're 
+
+sim.results<- do.call(rbind, lapply(1:1000, function(x) pseud(J))) 
+hist(sim.results, 20, main="sd.group = 0", xlab="P-values", ylim=c(0,300))
+
+false.positive.rate <- apply(sim.results, MARGIN=2, FUN=proportion)
+print(c("False-positive rate (%) =", false.positive.rate *100), quote=FALSE)
+```
+<br></br>
+
+***
+
+<br></br>
+
+#Example: Valproic acid (VPA) model of autism
+In some cases, pseudoreplication cannot be avoided via experimental design. An example is the VPA model of autism, in which VPA is given to pregnant dams but the effects are actually measured in their offspring.
+
+<div style="text-align: center;">![](vpa_model.png)</div>
+<br></br>
+
+##VPA Example: The Wrong Way vs Better Way
+Let's imagine a scenario in which we have 6 litters that have come from control dams, and 6 litters that have come from dams treated with VPA. The litters have a varying number of pups. 
+<br></br>
+<br></br>
+
+###Simulate litter data
+Below I show how you can simulate this data, but for consistency I will again read in a dataset that I've already simulated.
+```{r}
+#To simulate data:
+I= 12 #total number of litters
+J= rep(c(2,2,4,5,6,7), 2) #number of individuals/litter
+diff= 1 #treatment effect
+sd.group= 1 #std deviation between litters
+sd.observation= 0.5 #std deviation within litter
+
+litter.ID= rep(c(1:I), times=J)
+animal.ID= sequence(J)
+treat.ID= rep(c(0,1), each=0.5*length(animal.ID)) #each group with parallel litter sizes
+
+mean.0= rep( rnorm(n= 0.5*I, mean= 0, sd= sd.group), times= J[1:c(0.5*I)])
+mean.1= rep( rnorm(n= 0.5*I, mean= diff, sd= sd.group), times= J[1:c(0.5*I)]) # we ARE simulating a treatment effect
+y= rnorm (n= sum(J), mean= c(mean.0, mean.1), sd= sd.observation) #sample 
+
+#Create Dataframe
+data <- as.data.frame(cbind(litter.ID, animal.ID, treat.ID, y))
+
+#Read in my data:
+data <- read.csv(file="~/Documents/New R Projects/Pseudoreplication/VPA1.csv")
+str(data)
+head(data, 10) #Show first 10 observations
+```
+<br></br>
+We have 52 observations (or pups in this case), with 26 in the control group, and 26 in the treatment group. Let's check the ICC of this data set.
+<br></br>
+
+### Estimate ICC of litter data
+```{r}
+ICCest(x= as.factor(litter.ID), y= y, data= data)
+
+```
+<br></br>
+
+##The Wrong Way
+The ICC is pretty high. The wrong way to analyze these data would be to run a regular model (as below) by treat all 52 observations as independent. This would be pseudoreplication.
+<br></br>
+```{r}
+#Plot the data
+plot(litter.ID, y, 
+     xlab="Litter ID, N=52", ylab="Mean",  main= "Control  vs Treated",
+     ylim=range(c(data$y-1), c(data$y+1)), 
+     cex=1.5, cex.lab=1.5, cex.axis=1.5, xaxt="none") #formats axes 
+axis(1, seq(from = 1, to = 12, by = 1), cex.axis=1.5) #Adds custom x-axis labels
+abline(v=6.5) #Adds divider line to plot
+```
+
+```{r}
+#Run the linear model
+results.wrong.way <- lm(y~treat.ID, data=data)
+summary(results.wrong.way)
+```
+We get a pretty low p-value, indicating a strong effect. This p-value is not correct because the observations from each litter are not independent observations. <br></br>
+<br></br>
+
+##The Better Way
+Instead, it would be better to use the average of each litter, using the litter as the unit of analysis. Taking the average per group is the easiest way to correct for any pseudoreplication. In our case this will reduce our sample to an N=12. Let's calculate the average and place it in a new dataframe.
+
+```{r}
+new<- aggregate(y ~ litter.ID, data= data, FUN= mean) #Computes the average value of y, grouped by litter
+
+#Let's also compute the standard error of the mean, and add it as a column as well.
+SEM <- function(x){
+    sd(x)/sqrt(length(x))
+}
+SEM <- aggregate( y ~ litter.ID, data= data, FUN= SEM) #Computes SEM
+new <- merge(new, SEM, by="litter.ID") #Adds it to dataframe
+
+new$treat.ID <- rep(c(0,1), each=I*0.5) #add column for treatment ID 
+colnames(new) <- c("litter.ID", "litter.avg", "SEM", "treat.ID") #Adds column names
+new
+```
+
+<br></br>Let's plot the averages and run the linear regression model. <br></br>
+```{r}
+plot(new$litter.ID, new$litter.avg, 
+     xlab="Litter ID, N=12", ylab="Mean", main= "Control  vs Treated",
+      ylim=range(c(data$y-1), c(data$y+1)),
+      pch=20, cex=1.5, cex.lab=1.5, cex.axis=1.5, xaxt="none") #formats axes 
+axis(1, seq(1,12,1), cex.axis=1.5) #Adds custom x-axis
+abline(v=6.5)
+```
+```{r}
+ results.better.way <- lm(litter.avg~litter.ID, data=new) #The dependent variable is now the set of 12 average litter values, and not the 52 independent observations.
+ summary(results.better.way)
+```
+
+Note that now our p-value and the effect size that corresponds with it are much more modest than when we ran our statistical model with uncorrected pseudoreplication.<br></br>
+<br></br>
+
+##The downside to discarding the information about litter size.
+When we distill the observations from each litter down to a single average value, we lose information about the litter size and the variability in that litter. This is the information that the SEM captures, which we've already calculated. Let's plot the averages along with the SEMs below.
+
+```{r}
+plot(new$litter.ID, new$litter.avg,
+     xlab="Litter ID", ylab="Mean +/- SEM",  main= "Control  vs Treated",
+     ylim=range(c(data$y-1), c(data$y+1)),
+     pch=20,  cex=1.5, cex.lab=1.5, cex.axis=1.5, xaxt="none") 
+axis(1, seq(1,12,1), cex.axis=1.5) #custom x-axis
+abline(v=6.5)
+
+arrows(new$litter.ID, new$litter.avg-new$SEM, 
+       new$litter.ID, new$litter.avg+new$SEM, 
+       length=0.05, angle=90, code=3) #attributes of the "arrowhead"
+
+```
+
+##Correcting with a mixed model
+<br></br>
+The best way to analyze these data is by using a mixed model. The mixed model will include the information about group (e.g. litter) size and variability when it tests for an effect of treatment, without committing pseudoreplication. A mixed model will take the group level information and shrink those estimates towards the grand mean. Groups with more uncertainty (smaller groups, or ones with high amounts of variability) will shrink relatively more than groups with less uncertainty. <br></br>
+
+The specific mechanics of the mixed model are out of the scope of this tutorial. But we can use the function below for a linear mixed model to compute the best estimate of the VPA treatment effect from our example.<br></br>
+<br></br>
+
+##Revisiting the VPA example with a mixed model
+```{r}
+ library(nlme)
+  best <- lme(fixed= y ~ treat.ID, random= ~1 | litter.ID, data= data) #the group-level info is always entered as the random variable
+  summary(best)
+```
+Using the mixed model, we can be confident that our estimate and our p-value are accurately reflecting the data because the mixed model has taken into account that observations in the same group will not be completely independent from one another.  <br></br>
+
+We can plot the final results:
+
+```{r}
+#First extract "shrunken" mean values from model:
+ d<- coef(best)
+ shrunken.litter.means <- c(d$`(Intercept)`[1:6], d$`(Intercept)`[7:12] + d$treat.ID[7:12])
+ 
+ new$shrunken.litter.means <- shrunken.litter.means #adds column of shrunken means to dataframe
+ 
+ ctrl.mean <- mean(shrunken.litter.means[1:6]) #to use for plotting
+ vpa.mean <- mean(shrunken.litter.means[7:12])
+    
+#Using shrunken litter means, final results
+plot(new$litter.ID, shrunken.litter.means, 
+     xlab="Litter ID, N=12", ylab= "Shrunken Mean", main= "After Shrinkage",
+     ylim=range(-2, 1.5), 
+    pch= 20, cex= 1.5, cex.lab= 1.5, cex.axis= 1.5, xaxt= "none")
+  axis(1, seq(1,12,1), cex.axis= 1.5)
+  abline(v= 6.5)
+  segments(x0= 0.75, y0= ctrl.mean, x1= 6.25,  y1= ctrl.mean, col= "red", lty= 2, lwd= 2)
+  segments(x0= 6.75, y0= vpa.mean, x1= 12.25, y1= vpa.mean, col= "red", lty= 2, lwd= 2)
+  
+
+    
+```
+
+
+
