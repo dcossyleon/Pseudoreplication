@@ -389,7 +389,7 @@ y= rnorm (n= sum(J), mean= c(mean.0, mean.1), sd= sd.observation) #sample
 data <- as.data.frame(cbind(litter.ID, animal.ID, treat.ID, y))
 
 #Read in my data:
-data <- read.csv(file="~/Documents/New R Projects/Pseudoreplication/VPA1.csv")
+data <- read.csv(file="VPA1.csv")
 str(data)
 head(data, 10) #Show first 10 observations
 ```
