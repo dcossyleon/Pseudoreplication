@@ -51,14 +51,14 @@ blink.data <- as.data.frame( cbind( subject.ID, trials.ID, sex, y.blink), row.na
 For consistency, I'm going to use a dataset I already have. But these data were simulated using the code above.  
 
 ```{r}
-blink.data <- read.csv(file = "~/Documents/Stats/Pseudoreplication/eyeblink_sim.csv")
+blink.data <- read.csv(file = "~/Documents/GitHub/Pseudoreplication/eyeblink_sim.csv")
 blink.data
 ```
 <br></br> 
 We can plot these data.  
 ```{r}
 # Plot the data
-plot(y.blink ~ jitter(sex, 0.05), data= blink.data, 
+plot.default(y.blink ~ jitter(sex, 0.05), data= blink.data, 
     xlab= "Sex", ylab= "Reaction time (ms)", 
     cex= 1.5, cex.lab= 1.5, cex.axis= 1.75, #Text and circle size
     xlim= c(-0.5,1.5), ylim= c(min(y.blink) -5, max(y.blink) +5),
@@ -88,7 +88,7 @@ From this example it's obvious to see that we have only two independent subjects
 ```{r Step 1: Calculate the mean of each group}
 mean.1 <- rep(mean(blink.data$y.blink[1:5]), times=J)
 mean.2 <- rep(mean(blink.data$y.blink[6:10]), times=J)
-group.mean <- blink.data$group.mean <- c(mean.1,mean.2) #group mean: means for male subject, mean for female subject
+group.mean <- blink.data$group.mean <- c(mean.1, mean.2) #group mean: means for male subject, mean for female subject
 group.mean
 ```
 <br></br>
